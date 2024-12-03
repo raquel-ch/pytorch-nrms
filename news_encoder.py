@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from ebrec.models.newsrec_pytorch.layers import AttLayer2, SelfAttention
+from layers import AttLayer2, SelfAttention
 
 class NewsEncoder(nn.Module):
     def __init__(self, hparams_nrms, word2vec_embedding, seed):

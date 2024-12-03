@@ -24,7 +24,7 @@ from pathlib import Path
 import tensorflow as tf
 import polars as pl
 
-from ebrec.utils._constants import (
+from constants import (
     DEFAULT_HISTORY_ARTICLE_ID_COL,
     DEFAULT_CLICKED_ARTICLES_COL,
     DEFAULT_INVIEW_ARTICLES_COL,
@@ -35,23 +35,23 @@ from ebrec.utils._constants import (
     DEFAULT_USER_COL,
 )
 
-from ebrec.utils._behaviors import (
+from behaviors import (
     create_binary_labels_column,
     sampling_strategy_wu2019,
     add_known_user_column,
     add_prediction_scores,
     truncate_history,
 )
-from ebrec.evaluation import MetricEvaluator, AucScore, NdcgScore, MrrScore
-from ebrec.utils._articles import convert_text2encoding_with_transformers
-from ebrec.utils._polars import concat_str_columns, slice_join_dataframes
-from ebrec.utils._articles import create_article_id_to_value_mapping
-from ebrec.utils._nlp import get_transformers_word_embeddings
-from ebrec.utils._python import write_submission_file, rank_predictions_by_score
+from evaluation import MetricEvaluator, AucScore, NdcgScore, MrrScore
+from articles import convert_text2encoding_with_transformers
+from polars import concat_str_columns, slice_join_dataframes
+from articles import create_article_id_to_value_mapping
+from nlp import get_transformers_word_embeddings
+from python import write_submission_file, rank_predictions_by_score
 
-from ebrec.models.newsrec_pytorch.dataloader import NRMSDataLoader
-from ebrec.models.newsrec_pytorch.model_config import hparams_nrms
-from ebrec.models.newsrec_pytorch import NRMSModel
+from models.newsrec_pytorch.dataloader import NRMSDataLoader
+from models.newsrec_pytorch.model_config import hparams_nrms
+from models.newsrec_pytorch import NRMSModel
 
 # %% [markdown]
 # ## Load dataset
@@ -201,7 +201,7 @@ num_epochs = 1
 
 device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f">> Using device: {device}")
-from ebrec.models.newsrec_pytorch import NRMSModel
+from models.newsrec_pytorch import NRMSModel
 from torch.utils.tensorboard import SummaryWriter
 
 

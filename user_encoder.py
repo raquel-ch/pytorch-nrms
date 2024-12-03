@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from ebrec.models.newsrec_pytorch.layers import AttLayer2, SelfAttention
-from ebrec.models.newsrec_pytorch.model_config import hparams_nrms
+from layers import AttLayer2, SelfAttention
+from model_config import hparams_nrms
 
 class UserEncoder(nn.Module):
     def __init__(self, news_encoder, hparams_nrms, seed):

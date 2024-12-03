@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
-from ebrec.models.newsrec_pytorch.news_encoder import NewsEncoder
-from ebrec.models.newsrec_pytorch.user_encoder import UserEncoder
+from news_encoder import NewsEncoder
+from user_encoder import UserEncoder
 
 class NRMSModel(nn.Module):
     def __init__(self, hparams_nrms, word2vec_embedding, seed):
