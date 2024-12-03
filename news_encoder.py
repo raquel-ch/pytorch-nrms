@@ -12,9 +12,10 @@ class NewsEncoder(nn.Module):
         self.attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
         
     def forward(self, sequences_input_title):
-        embedded_sequences = self.embedding(sequences_input_title)
+        embedded_sequences = self.embedding(sequences_input_title).detach()
         # print("embedded sequence size: ", embedded_sequences.shape)
         y = self.dropout(embedded_sequences)
+        del embedded_sequences
         # print(y.shape)
         y = self.multihead_attention(y, y, y)
         # print("News encoder multihead attention output: ", y[0].shape)
