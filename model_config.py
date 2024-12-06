@@ -71,9 +71,9 @@ class hparams_nrms:
     title_size: int = DEFAULT_TITLE_SIZE
     history_size: int = 50
     # MODEL ARCHITECTURE
-    head_num: int = 24
-    head_dim: int = 24 # Modified from 20 to DEFAULT_DOCUMENT_SIZE
-    attention_hidden_dim: int = DEFAULT_DOCUMENT_SIZE
+    head_num: int = 6
+    head_dim: int = 6 # Modified from 20 to DEFAULT_DOCUMENT_SIZE
+    attention_hidden_dim: int = 768
     embedded_dimension: int = 768
     # MODEL OPTIMIZER:
     optimizer: str = "adam"
