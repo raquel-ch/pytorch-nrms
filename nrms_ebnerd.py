@@ -12,7 +12,8 @@ epoch = 0
 num_epochs = 10
 torch.cuda.empty_cache()
 
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+cuda_device = input("Enter the CUDA device number: ")
+device = torch.device("cuda:"+ cuda_device if torch.cuda.is_available() else "cpu")
 print(f">> Using device: {device}")
 
 # %% [markdown]
@@ -23,8 +24,10 @@ from transformers import AutoTokenizer, AutoModel
 from pathlib import Path
 import tensorflow as tf
 import polars as pl
+from torch.utils.tensorboard import SummaryWriter
 
-from constants import (
+
+from _constants import (
     DEFAULT_HISTORY_ARTICLE_ID_COL,
     DEFAULT_CLICKED_ARTICLES_COL,
     DEFAULT_INVIEW_ARTICLES_COL,
@@ -35,23 +38,22 @@ from constants import (
     DEFAULT_USER_COL,
 )
 
-from behaviors import (
+from _behaviors import (
     create_binary_labels_column,
     sampling_strategy_wu2019,
     add_known_user_column,
     add_prediction_scores,
     truncate_history,
 )
-from evaluation import MetricEvaluator, AucScore, NdcgScore, MrrScore
-from articles import convert_text2encoding_with_transformers
-from polars import concat_str_columns, slice_join_dataframes
-from articles import create_article_id_to_value_mapping
-from nlp import get_transformers_word_embeddings
-from python import write_submission_file, rank_predictions_by_score
+from _articles import convert_text2encoding_with_transformers
+from _polars import concat_str_columns, slice_join_dataframes
+from _articles import create_article_id_to_value_mapping
+from _nlp import get_transformers_word_embeddings
+from _python import write_submission_file, rank_predictions_by_score
 
-from models.newsrec_pytorch.dataloader import NRMSDataLoader
-from models.newsrec_pytorch.model_config import hparams_nrms
-from models.newsrec_pytorch import NRMSModel
+from dataloader import NRMSDataLoader
+from model_config import hparams_nrms
+from NRMSModel import NRMSModel
 
 # %% [markdown]
 # ## Load dataset
@@ -90,7 +92,7 @@ def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
 
 # %%
 PATH = Path("./ebnerd_data").expanduser()
-DATASPLIT = "ebnerd_demo"
+DATASPLIT = "ebnerd_small"
 DUMP_DIR = PATH.joinpath("downloads1")
 DUMP_DIR.mkdir(exist_ok=True, parents=True)
 
@@ -137,7 +139,7 @@ df_train.head(2)
 # ## Load articles
 
 # %%
-df_articles = pl.read_parquet(PATH.joinpath("ebnerd_demo/articles.parquet"))
+df_articles = pl.read_parquet(PATH.joinpath("ebnerd_small/articles.parquet"))
 df_articles.head(2)
 
 # %% [markdown]
@@ -178,7 +180,7 @@ train_dataloader = NRMSDataLoader(
     unknown_representation="zeros",
     history_column=DEFAULT_HISTORY_ARTICLE_ID_COL,
     eval_mode=False,
-    batch_size=4,
+    batch_size=16,
 )
 val_dataloader = NRMSDataLoader(
     behaviors=df_validation,
@@ -186,7 +188,7 @@ val_dataloader = NRMSDataLoader(
     unknown_representation="zeros",
     history_column=DEFAULT_HISTORY_ARTICLE_ID_COL,
     eval_mode=True,
-    batch_size=4,
+    batch_size=16,
 )
 
 # %% [markdown]
@@ -194,44 +196,61 @@ val_dataloader = NRMSDataLoader(
 # 
 
 # %%
-import torch
-import torch.nn as nn
+from sklearn.metrics import roc_auc_score
+import torch.nn.utils  # Ensure this is imported for gradient clipping
+
 epoch = 0
-num_epochs = 1
-
-device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-print(f">> Using device: {device}")
-from models.newsrec_pytorch import NRMSModel
-from torch.utils.tensorboard import SummaryWriter
-
+num_epochs = 100
 
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
 print(word2vec_embedding.shape)
-nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=42).to(device) # Adding to device
+
+nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=42).to(device)  # Adding to device
 print(nrms)
-optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-3)
+
+optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-4)
 loss_fn = nn.CrossEntropyLoss()
-writer = SummaryWriter("./logs")
+
+# Gradient clipping parameter
+max_norm = 5.0  # Maximum gradient norm
 
 # Training loop
 for epoch in range(num_epochs):
     nrms.train()  # Set the model to training mode
     running_loss = 0.0
+    all_labels = []
+    all_outputs = []
+    
     for i, ((his_input_title, pred_input_title), labels) in enumerate(train_dataloader):
         his_input_title = his_input_title.to(device, dtype=torch.long)
         pred_input_title = pred_input_title.to(device, dtype=torch.long)
+        og_labels = labels
         labels = labels.to(device, dtype=torch.long).view(-1)
-        labels = labels.view(-1)
-        # print("Input shape for user encoder:", his_input_title.shape)
-        # print("Input shape for news encoder:", pred_input_title.shape)
+
         optimizer.zero_grad()  # Zero the gradients
         outputs = nrms(his_input_title, pred_input_title)  # Forward pass
-        # print(outputs)
+        
         loss = loss_fn(outputs.view(-1), labels.float())  # Compute the loss
         loss.backward()  # Backward pass
+        
+        # Apply gradient clipping
+        torch.nn.utils.clip_grad_norm_(nrms.parameters(), max_norm)
+        total_norm = 0
+        for p in nrms.parameters():
+            if p.grad is not None:  # Only consider parameters with gradients
+                param_norm = p.grad.data.norm(2)  # Compute the L2 norm of gradients
+                total_norm += param_norm.item() ** 2
+        total_norm = total_norm ** 0.5  # Final gradient norm
+
         optimizer.step()  # Update the parameters
         running_loss += loss.item()
+        # if i % 50 == 0:
+        #     print(f"Epoch {epoch + 1}, Batch {i + 1}: Gradient Norm = {total_norm:.4f}")
+        #     print(f"running_loss: {running_loss}")
+        #     print(f"outputs: {outputs}")
         
+        all_labels.extend(og_labels.cpu().numpy())
+        all_outputs.extend(outputs.detach().cpu().numpy())
         
         # Detach tensors immediately after use to save memory
         his_input_title = his_input_title.detach()
@@ -241,54 +260,58 @@ for epoch in range(num_epochs):
         del his_input_title, pred_input_title, labels, outputs, loss
         torch.cuda.empty_cache()  # Clear unused GPU memory
         
-        
-        if i % 100 == 99:  # Print every 100 mini-batches
-            print(f"[{epoch + 1}, {i + 1}] loss: {running_loss / 100:.3f}")
-            running_loss = 0.0
-    print("Validation started ----")
-    # Validation
-    nrms.eval()
-    val_loss = 0.0
-    correct = 0
-    total = 0
+    # Calculate AUC score
+    auc = 0
+    for i, label_true in enumerate(all_labels):
+        auc += roc_auc_score(label_true, all_outputs[i])
+    auc /= len(all_labels)
+    
+    # Print epoch details
+    print(f"Epoch: {epoch + 1}/{num_epochs}")
+    print(f"Loss: {running_loss:.10f}")
+    print(f"AUC: {auc:.10f}")
+    print(f"--------------------------\n")
+
+    
+    # Calculate AUC score
+    
+    
+    # Validation loop
+    nrms.eval()  # Set the model to evaluation mode
+    all_labels = []
+    all_outputs = []
     with torch.no_grad():
-        for (his_input_title, pred_input_title), labels in val_dataloader:
+        for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
             his_input_title = his_input_title.to(device, dtype=torch.long)
             pred_input_title = pred_input_title.to(device, dtype=torch.long)
+            og_labels = labels
             labels = labels.to(device, dtype=torch.long).view(-1)
-            labels = labels.view(-1)
+
+            outputs = nrms(his_input_title, pred_input_title)  # Forward pass
+            all_labels.extend(og_labels.cpu().numpy())
+            all_outputs.extend(outputs.detach().cpu().numpy())
             
-            outputs = nrms(his_input_title, pred_input_title)
-            loss = loss_fn(outputs.view(-1), labels.float())
-            val_loss += loss.item()
-            
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
             # Detach tensors immediately after use to save memory
             his_input_title = his_input_title.detach()
             pred_input_title = pred_input_title.detach()
             labels = labels.detach()
             outputs = outputs.detach()
-            del his_input_title, pred_input_title, labels, outputs, loss
-            torch.cuda.empty_cache()  # Clear unused GPU memory
+            del his_input_title, pred_input_title, labels, outputs
+            torch.cuda.empty_cache()
             
-    val_loss /= len(val_dataloader)
-    accuracy = 100 * correct / total
-    print(f"Epoch {epoch + 1}, Loss: {val_loss:.3f}, Accuracy: {accuracy:.2f}%")
-    
-       # Log to TensorBoard
-    writer.add_scalar("Loss/train", running_loss, epoch)
-    writer.add_scalar("Loss/validation", val_loss, epoch)
-    writer.add_scalar("Accuracy/validation", accuracy, epoch)
-
-# Save the model weights
-# MODEL_NAME = "NRMS"
-# MODEL_WEIGHTS = f"downloads/data/state_dict/{MODEL_NAME}/weights"
-# torch.save(nrms.state_dict(), MODEL_WEIGHTS)
-            
+        # Calculate AUC score
+        auc = 0
+        for i, label_true in enumerate(all_labels):
+            auc += roc_auc_score(label_true, all_outputs[i])
+        auc /= len(all_labels)
         
-    
+        # Print epoch details
+        print(f"Validation AUC: {auc:.10f}")
+        print(f"--------------------------\n")
+        
+        
+
+
 
 # %%
 # MODEL_NAME = "NRMS"
