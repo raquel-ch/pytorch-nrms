@@ -12,6 +12,9 @@ class UserEncoder(nn.Module):
         self.additive_attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
         self.dropout = nn.Dropout(hparams_nrms.dropout)
         self.initialize_weights(seed)
+        self.batch_norm_attention = nn.BatchNorm1d(hparams_nrms.history_size)
+        self.batch_norm_news = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
+
         
     def initialize_weights(self, seed):
         """Inicializa explícitamente los pesos de las capas."""
@@ -40,7 +43,7 @@ class UserEncoder(nn.Module):
         # Input size is (batch_size * history_size, title_size)
         click_title_presents = self.news_encoder(his_input_title_flat)  # Shape: (batch_size * history_size, hidden_dim)
         # Output size is (batch_size * history_size, hidden_dim)
-        
+        # click_title_presents = self.batch_norm_news(click_title_presents)
         
         # Reshape back to include history_size
         click_title_presents = click_title_presents.view(batch_size, history_size, -1)  # Shape: (batch_size, history_size, hidden_dim)
@@ -49,6 +52,7 @@ class UserEncoder(nn.Module):
         # Input size is (batch_size, history_size, hidden_dim)
         y = self.multihead_attention(click_title_presents, click_title_presents, click_title_presents)  # Shape: (batch_size, history_size, hidden_dim)
         # Output size is (batch_size, history_size, hidden_dim)
+        # y = self.batch_norm_attention(y[0])
         
         # Dropout
         y = self.dropout(y[0])
