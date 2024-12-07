@@ -92,7 +92,7 @@ def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
 
 # %%
 PATH = Path("./ebnerd_data").expanduser()
-DATASPLIT = "ebnerd_small"
+DATASPLIT = "ebnerd_demo"
 DUMP_DIR = PATH.joinpath("downloads1")
 DUMP_DIR.mkdir(exist_ok=True, parents=True)
 
@@ -149,7 +149,7 @@ df_articles.head(2)
 # 
 
 # %%
-TRANSFORMER_MODEL_NAME = "FacebookAI/xlm-roberta-base"
+TRANSFORMER_MODEL_NAME = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 TEXT_COLUMNS_TO_USE = [DEFAULT_SUBTITLE_COL, DEFAULT_TITLE_COL]
 MAX_TITLE_LENGTH = 30
 
@@ -159,6 +159,7 @@ transformer_tokenizer = AutoTokenizer.from_pretrained(TRANSFORMER_MODEL_NAME)
 
 # We'll init the word embeddings using the
 word2vec_embedding = get_transformers_word_embeddings(transformer_model)
+print(word2vec_embedding.shape)
 #
 df_articles, cat_cal = concat_str_columns(df_articles, columns=TEXT_COLUMNS_TO_USE)
 df_articles, token_col_title = convert_text2encoding_with_transformers(
@@ -205,11 +206,12 @@ num_epochs = 100
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
 print(word2vec_embedding.shape)
 
-nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=42).to(device)  # Adding to device
+nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
 
-optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-5, weight_decay=1e-3)
 loss_fn = nn.CrossEntropyLoss()
+val_loss_fn = nn.BCEWithLogitsLoss()
 
 # Gradient clipping parameter
 max_norm = 5.0  # Maximum gradient norm
@@ -228,58 +230,46 @@ for epoch in range(num_epochs):
         labels = labels.to(device, dtype=torch.long).view(-1)
 
         optimizer.zero_grad()  # Zero the gradients
-        outputs = nrms(his_input_title, pred_input_title)  # Forward pass
+        outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
         
         loss = loss_fn(outputs.view(-1), labels.float())  # Compute the loss
         loss.backward()  # Backward pass
+        loss.detach()  # Detach the loss to save memory
         
         # Apply gradient clipping
         torch.nn.utils.clip_grad_norm_(nrms.parameters(), max_norm)
-        total_norm = 0
-        for p in nrms.parameters():
-            if p.grad is not None:  # Only consider parameters with gradients
-                param_norm = p.grad.data.norm(2)  # Compute the L2 norm of gradients
-                total_norm += param_norm.item() ** 2
-        total_norm = total_norm ** 0.5  # Final gradient norm
 
         optimizer.step()  # Update the parameters
         running_loss += loss.item()
-        # if i % 50 == 0:
-        #     print(f"Epoch {epoch + 1}, Batch {i + 1}: Gradient Norm = {total_norm:.4f}")
-        #     print(f"running_loss: {running_loss}")
-        #     print(f"outputs: {outputs}")
-        
-        all_labels.extend(og_labels.cpu().numpy())
-        all_outputs.extend(outputs.detach().cpu().numpy())
+    
         
         # Detach tensors immediately after use to save memory
-        his_input_title = his_input_title.detach()
-        pred_input_title = pred_input_title.detach()
-        labels = labels.detach()
-        outputs = outputs.detach()
-        del his_input_title, pred_input_title, labels, outputs, loss
-        torch.cuda.empty_cache()  # Clear unused GPU memory
+        his_input_title.detach()
+        pred_input_title.detach()
+        labels.detach()
         
+        # Save labels and outputs for AUC calculation
+        all_labels.extend(og_labels.detach().cpu().numpy())
+        all_outputs.extend(outputs.detach().cpu().numpy())
+        
+        del his_input_title, pred_input_title, labels, loss, outputs, og_labels
+        torch.cuda.empty_cache()  # Clear unused GPU memory
+
     # Calculate AUC score
     auc = 0
     for i, label_true in enumerate(all_labels):
         auc += roc_auc_score(label_true, all_outputs[i])
     auc /= len(all_labels)
     
-    # Print epoch details
+    # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
-    print(f"Loss: {running_loss:.10f}")
-    print(f"AUC: {auc:.10f}")
-    print(f"--------------------------\n")
+    print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
 
-    
-    # Calculate AUC score
-    
-    
     # Validation loop
     nrms.eval()  # Set the model to evaluation mode
     all_labels = []
     all_outputs = []
+    val_loss = 0.0
     with torch.no_grad():
         for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
             his_input_title = his_input_title.to(device, dtype=torch.long)
@@ -287,9 +277,12 @@ for epoch in range(num_epochs):
             og_labels = labels
             labels = labels.to(device, dtype=torch.long).view(-1)
 
-            outputs = nrms(his_input_title, pred_input_title)  # Forward pass
+            outputs = torch.sigmoid(nrms(his_input_title, pred_input_title)).to(device)  # Forward pass
+            loss = val_loss_fn(outputs.view(-1), labels.float())
+            val_loss = loss.item()
+
             all_labels.extend(og_labels.cpu().numpy())
-            all_outputs.extend(outputs.detach().cpu().numpy())
+            all_outputs.extend(outputs.cpu().numpy())
             
             # Detach tensors immediately after use to save memory
             his_input_title = his_input_title.detach()
@@ -299,15 +292,12 @@ for epoch in range(num_epochs):
             del his_input_title, pred_input_title, labels, outputs
             torch.cuda.empty_cache()
             
-        # Calculate AUC score
-        auc = 0
-        for i, label_true in enumerate(all_labels):
-            auc += roc_auc_score(label_true, all_outputs[i])
-        auc /= len(all_labels)
-        
-        # Print epoch details
-        print(f"Validation AUC: {auc:.10f}")
-        print(f"--------------------------\n")
+    # Calculate AUC score
+    auc = roc_auc_score(all_labels, all_outputs)
+    
+    # Print validation details
+    print(f"Validation loss: {val_loss:.10f}, Validation AUC: {auc:.10f}")
+    print(f"--------------------------\n")
         
         
 
