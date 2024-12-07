@@ -12,7 +12,7 @@ class UserEncoder(nn.Module):
         self.additive_attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
         self.dropout = nn.Dropout(hparams_nrms.dropout)
         self.initialize_weights(seed)
-        self.batch_norm_attention = nn.BatchNorm1d(hparams_nrms.history_size)
+        self.batch_norm_attention = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
         self.batch_norm_news = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
 
         
@@ -42,6 +42,7 @@ class UserEncoder(nn.Module):
         
         # Input size is (batch_size * history_size, title_size)
         click_title_presents = self.news_encoder(his_input_title_flat)  # Shape: (batch_size * history_size, hidden_dim)
+        click_title_presents = self.batch_norm_news(click_title_presents)
         # Output size is (batch_size * history_size, hidden_dim)
         # click_title_presents = self.batch_norm_news(click_title_presents)
         
@@ -50,12 +51,13 @@ class UserEncoder(nn.Module):
         # Self-attention over the historical clicked news representations
         
         # Input size is (batch_size, history_size, hidden_dim)
-        y = self.multihead_attention(click_title_presents, click_title_presents, click_title_presents)  # Shape: (batch_size, history_size, hidden_dim)
+        y, _ = self.multihead_attention(click_title_presents, click_title_presents, click_title_presents)  # Shape: (batch_size, history_size, hidden_dim)
         # Output size is (batch_size, history_size, hidden_dim)
         # y = self.batch_norm_attention(y[0])
-        
+        y = self.batch_norm_attention(y.permute(0, 2, 1)).permute(0,2,1)
+
         # Dropout
-        y = self.dropout(y[0])
+        y = self.dropout(y)
         
         # Attention layer for user representation
         # Input size is (batch_size, history_size, hidden_dim)

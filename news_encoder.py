@@ -43,9 +43,10 @@ class NewsEncoder(nn.Module):
         del embedded_sequences
         
         # Input size is (title_size, batch_size, embedded_dimension)
-        y = self.multihead_attention(y, y, y)
+        y,_ = self.multihead_attention(y, y, y)
         # Output size is (title_size, batch_size, embedded_dimension)
-        y = self.dropout(y[0])
+        y = self.attention_bn(y.permute(0, 2, 1)).permute(0,2, 1)
+        y = self.dropout(y)
         
         # Input size is (batch_size, title_size, embedded_dimension)
         pred_title = self.attention(y)
