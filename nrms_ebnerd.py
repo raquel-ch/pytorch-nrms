@@ -5,9 +5,19 @@
 # 
 # We use a small dataset, which is downloaded from [recsys.eb.dk](https://recsys.eb.dk/). All the datasets are stored in the folder path ```~/ebnerd_data/*```.
 
+def get_parameters():
+    learning_rate = input("Learning rate: ")
+    batch_size = input("Batch size: ")
+    epochs = input("Epochs: ")
+    weight_decay = input("Weight decay: ")
+    head_dim = input("Head dimension/number: ")
+    
+    return learning_rate, batch_size, epochs, weight_decay, head_dim
+
 # %%
 import torch
 import torch.nn as nn
+
 epoch = 0
 num_epochs = 10
 torch.cuda.empty_cache()
@@ -57,6 +67,14 @@ from NRMSModel import NRMSModel
 
 # %% [markdown]
 # ## Load dataset
+
+learning_rate, batch_size, epochs, weight_decay, head_dim = get_parameters()
+hparams_nrms.learning_rate = learning_rate
+hparams_nrms.batch_size = batch_size
+hparams_nrms.epochs = epochs
+hparams_nrms.weight_decay = weight_decay
+hparams_nrms.head_dim = head_dim
+hparams_nrms.head_num = head_dim
 
 # %%
 def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
@@ -181,7 +199,7 @@ train_dataloader = NRMSDataLoader(
     unknown_representation="zeros",
     history_column=DEFAULT_HISTORY_ARTICLE_ID_COL,
     eval_mode=False,
-    batch_size=8,
+    batch_size=hparams_nrms.batch_size,
 )
 val_dataloader = NRMSDataLoader(
     behaviors=df_validation,
@@ -189,7 +207,7 @@ val_dataloader = NRMSDataLoader(
     unknown_representation="zeros",
     history_column=DEFAULT_HISTORY_ARTICLE_ID_COL,
     eval_mode=True,
-    batch_size=8,
+    batch_size=hparams_nrms.batch_size,
 )
 
 # %% [markdown]
@@ -201,7 +219,7 @@ from sklearn.metrics import roc_auc_score
 import torch.nn.utils  # Ensure this is imported for gradient clipping
 
 epoch = 0
-num_epochs = 100
+num_epochs = hparams_nrms.epochs
 
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
 print(word2vec_embedding.shape)
@@ -209,7 +227,7 @@ print(word2vec_embedding.shape)
 nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
 
-optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-4)
+optimizer = torch.optim.Adam(nrms.parameters(), lr=hparams_nrms.learning_rate, weight_decay=hparams_nrms.weight_decay)
 loss_fn = nn.CrossEntropyLoss()
 val_loss_fn = nn.BCEWithLogitsLoss()
 
