@@ -92,7 +92,7 @@ def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
 
 # %%
 PATH = Path("./ebnerd_data").expanduser()
-DATASPLIT = "ebnerd_demo"
+DATASPLIT = "ebnerd_small"
 DUMP_DIR = PATH.joinpath("downloads1")
 DUMP_DIR.mkdir(exist_ok=True, parents=True)
 
