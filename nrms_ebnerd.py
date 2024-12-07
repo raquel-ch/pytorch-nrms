@@ -279,7 +279,7 @@ for epoch in range(num_epochs):
             og_labels = labels
             labels = labels.to(device, dtype=torch.long).view(-1)
 
-            outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
+            outputs = torch.sigmoid(nrms(his_input_title, pred_input_title)).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
             val_loss = loss.item()
 

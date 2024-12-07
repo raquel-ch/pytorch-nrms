@@ -10,8 +10,6 @@ class NRMSModel(nn.Module):
         self.candidate_encoder = NewsEncoder(hparams_nrms, word2vec_embedding, seed)
         self.user_encoder = UserEncoder(self.news_encoder, hparams_nrms, seed)
         self.hparams_nrms = hparams_nrms
-        # self.batch_norm_news = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
-        # self.batch_norm_user = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
         
     
     def forward(self, his_input_title, pred_input_title):
@@ -42,8 +40,7 @@ class NRMSModel(nn.Module):
         # Input size is (batch_size, npratio)
         if npratio > 1:
             preds = torch.softmax(preds, dim=1)
-        else:
-            preds = torch.sigmoid(preds)
+        
         # Output is the probability of each news title
 
         return preds
