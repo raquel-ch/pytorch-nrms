@@ -181,7 +181,7 @@ train_dataloader = NRMSDataLoader(
     unknown_representation="zeros",
     history_column=DEFAULT_HISTORY_ARTICLE_ID_COL,
     eval_mode=False,
-    batch_size=16,
+    batch_size=8,
 )
 val_dataloader = NRMSDataLoader(
     behaviors=df_validation,
@@ -189,7 +189,7 @@ val_dataloader = NRMSDataLoader(
     unknown_representation="zeros",
     history_column=DEFAULT_HISTORY_ARTICLE_ID_COL,
     eval_mode=True,
-    batch_size=16,
+    batch_size=8,
 )
 
 # %% [markdown]
@@ -209,7 +209,7 @@ print(word2vec_embedding.shape)
 nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
 
-optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-5, weight_decay=1e-3)
+optimizer = torch.optim.Adam(nrms.parameters(), lr=1e-4)
 loss_fn = nn.CrossEntropyLoss()
 val_loss_fn = nn.BCEWithLogitsLoss()
 
@@ -264,6 +264,8 @@ for epoch in range(num_epochs):
     # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
     print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
+    print(f"Training outputs: {all_outputs[:10]}")
+    print(f"Training labels: {all_labels[:10]}")
 
     # Validation loop
     nrms.eval()  # Set the model to evaluation mode
@@ -277,7 +279,7 @@ for epoch in range(num_epochs):
             og_labels = labels
             labels = labels.to(device, dtype=torch.long).view(-1)
 
-            outputs = torch.sigmoid(nrms(his_input_title, pred_input_title)).to(device)  # Forward pass
+            outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
             val_loss = loss.item()
 
@@ -294,6 +296,9 @@ for epoch in range(num_epochs):
             
     # Calculate AUC score
     auc = roc_auc_score(all_labels, all_outputs)
+    
+    print(f"Validation outputs: {all_outputs[:10]}")
+    print(f"Validation labels: {all_labels[:10]}")
     
     # Print validation details
     print(f"Validation loss: {val_loss:.10f}, Validation AUC: {auc:.10f}")

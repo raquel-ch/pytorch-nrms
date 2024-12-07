@@ -42,6 +42,8 @@ class NRMSModel(nn.Module):
         # Input size is (batch_size, npratio)
         if npratio > 1:
             preds = torch.softmax(preds, dim=1)
+        else:
+            preds = torch.sigmoid(preds)
         # Output is the probability of each news title
 
         return preds
