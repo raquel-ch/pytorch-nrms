@@ -11,6 +11,8 @@ class NewsEncoder(nn.Module):
         self.multihead_attention = nn.MultiheadAttention(hparams_nrms.embedded_dimension, hparams_nrms.head_num)
         self.attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
         self.initialize_weights(seed)
+        self.embedding_bn = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
+        self.attention_bn = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
 
     def initialize_weights(self, seed):
         """Inicializa explícitamente los pesos de las capas."""
@@ -33,6 +35,8 @@ class NewsEncoder(nn.Module):
     def forward(self, sequences_input_title):
         # Input size is (batch_size, title_size)
         embedded_sequences = self.embedding(sequences_input_title).detach()
+        embedded_sequences = embedded_sequences.transpose(1, 2)  # (batch_size, embedding_dim, seq_length)
+        embedded_sequences = self.embedding_bn(embedded_sequences).transpose(1, 2)  # Back to (batch_size, seq_length, embedding_dim)
         # Output size is (batch_size, title_size, embedded_dimension)
         
         y = self.dropout(embedded_sequences)
