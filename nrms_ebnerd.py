@@ -6,11 +6,11 @@
 # We use a small dataset, which is downloaded from [recsys.eb.dk](https://recsys.eb.dk/). All the datasets are stored in the folder path ```~/ebnerd_data/*```.
 
 def get_parameters():
-    learning_rate = input("Learning rate: ")
-    batch_size = input("Batch size: ")
-    epochs = input("Epochs: ")
-    weight_decay = input("Weight decay: ")
-    head_dim = input("Head dimension/number: ")
+    learning_rate = float(input("Learning rate: "))
+    batch_size = int(input("Batch size: "))
+    epochs = int(input("Epochs: "))
+    weight_decay = float(input("Weight decay: "))
+    head_dim = int(input("Head dimension/number: "))
     
     return learning_rate, batch_size, epochs, weight_decay, head_dim
 
