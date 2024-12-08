@@ -6,9 +6,8 @@ from user_encoder import UserEncoder
 class NRMSModel(nn.Module):
     def __init__(self, hparams_nrms, word2vec_embedding, seed):
         super(NRMSModel, self).__init__()
-        self.news_encoder = NewsEncoder(hparams_nrms, word2vec_embedding, seed)
         self.candidate_encoder = NewsEncoder(hparams_nrms, word2vec_embedding, seed)
-        self.user_encoder = UserEncoder(self.news_encoder, hparams_nrms, seed)
+        self.user_encoder = UserEncoder(self.candidate_encoder, hparams_nrms, seed)
         self.hparams_nrms = hparams_nrms
         
     
@@ -35,10 +34,7 @@ class NRMSModel(nn.Module):
         
         # apply softmax to get probability
         # Input size is (batch_size, npratio)
-        if npratio > 1:
-            preds = torch.softmax(preds, dim=1)
-        if npratio == 1:
-            preds = torch.sigmoid(preds)
+        preds = torch.softmax(preds, dim=1) if npratio > 1 else torch.sigmoid(preds)
         
         # Output is the probability of each news title
 

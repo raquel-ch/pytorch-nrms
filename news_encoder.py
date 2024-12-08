@@ -6,7 +6,7 @@ import torch.nn.init as init
 class NewsEncoder(nn.Module):
     def __init__(self, hparams_nrms, word2vec_embedding, seed):
         super(NewsEncoder, self).__init__()
-        self.embedding = nn.Embedding.from_pretrained(word2vec_embedding, freeze=False)
+        self.embedding = nn.Embedding.from_pretrained(word2vec_embedding, freeze=True)
         self.dropout = nn.Dropout(hparams_nrms.dropout)
         self.multihead_attention = nn.MultiheadAttention(hparams_nrms.embedded_dimension, hparams_nrms.head_num)
         self.attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
@@ -41,7 +41,7 @@ class NewsEncoder(nn.Module):
         y,_ = self.multihead_attention(embedded_sequences, embedded_sequences, embedded_sequences)
         # Output size is (title_size, batch_size, embedded_dimension)
         
-        y = self.attention_bn(y.permute(0, 2, 1)).permute(0,2, 1)
+        # y = self.attention_bn(y.permute(0, 2, 1)).permute(0,2, 1)
         y = self.dropout(y)
         
         # Input size is (batch_size, title_size, embedded_dimension)

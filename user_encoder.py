@@ -51,7 +51,7 @@ class UserEncoder(nn.Module):
         y = self.dropout(y)
         
         # y = self.batch_norm_attention(y[0])
-        y = self.batch_norm_attention(y.permute(0, 2, 1)).permute(0,2,1)
+        # y = self.batch_norm_attention(y.permute(0, 2, 1)).permute(0,2,1)
 
         # Attention layer for user representation
         # Input size is (batch_size, history_size, hidden_dim)
