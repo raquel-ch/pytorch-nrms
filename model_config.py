@@ -81,6 +81,8 @@ class hparams_nrms:
     dropout: float = 0.2
     learning_rate: float = 0.0001
     epochs: int = 50
+    batch_size: int = 16
+    weight_decay: float = 0.0
 
 
 class hparams_nrms_docvec:

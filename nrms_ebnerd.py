@@ -5,25 +5,14 @@
 # 
 # We use a small dataset, which is downloaded from [recsys.eb.dk](https://recsys.eb.dk/). All the datasets are stored in the folder path ```~/ebnerd_data/*```.
 
-def get_parameters():
-    learning_rate = float(input("Learning rate: "))
-    batch_size = int(input("Batch size: "))
-    epochs = int(input("Epochs: "))
-    weight_decay = float(input("Weight decay: "))
-    head_dim = int(input("Head dimension/number: "))
-    
-    return learning_rate, batch_size, epochs, weight_decay, head_dim
-
 # %%
 import torch
 import torch.nn as nn
-
 epoch = 0
 num_epochs = 10
 torch.cuda.empty_cache()
 
-cuda_device = input("Enter the CUDA device number: ")
-device = torch.device("cuda:"+ cuda_device if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 print(f">> Using device: {device}")
 
 # %% [markdown]
@@ -68,6 +57,16 @@ from NRMSModel import NRMSModel
 # %% [markdown]
 # ## Load dataset
 
+# %%
+def get_parameters():
+    learning_rate = float(input("Learning rate: "))
+    batch_size = int(input("Batch size: "))
+    epochs = int(input("Epochs: "))
+    weight_decay = float(input("Weight decay: "))
+    head_dim = int(input("Head dimension/number: "))
+    
+    return learning_rate, batch_size, epochs, weight_decay, head_dim
+
 learning_rate, batch_size, epochs, weight_decay, head_dim = get_parameters()
 hparams_nrms.learning_rate = learning_rate
 hparams_nrms.batch_size = batch_size
@@ -76,7 +75,6 @@ hparams_nrms.weight_decay = weight_decay
 hparams_nrms.head_dim = head_dim
 hparams_nrms.head_num = head_dim
 
-# %%
 def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
     """
     Load ebnerd - function
@@ -210,6 +208,19 @@ val_dataloader = NRMSDataLoader(
     batch_size=hparams_nrms.batch_size,
 )
 
+# %%
+def print_hparams(hparams):
+    print("Hyperparameters:")
+    print(f"Learning rate: {hparams.learning_rate}")
+    print(f"Batch size: {hparams.batch_size}")
+    print(f"Epochs: {hparams.epochs}")
+    print(f"Weight decay: {hparams.weight_decay}")
+    print(f"Head dimension: {hparams.head_dim}")
+    print(f"Head number: {hparams.head_num}")
+    
+        
+print_hparams(hparams_nrms)
+
 # %% [markdown]
 # ## Train the model
 # 
@@ -229,7 +240,7 @@ print(nrms)
 
 optimizer = torch.optim.Adam(nrms.parameters(), lr=hparams_nrms.learning_rate, weight_decay=hparams_nrms.weight_decay)
 loss_fn = nn.CrossEntropyLoss()
-val_loss_fn = nn.BCEWithLogitsLoss()
+val_loss_fn = nn.CrossEntropyLoss()
 
 # Gradient clipping parameter
 max_norm = 5.0  # Maximum gradient norm
@@ -297,7 +308,7 @@ for epoch in range(num_epochs):
             og_labels = labels
             labels = labels.to(device, dtype=torch.long).view(-1)
 
-            outputs = torch.sigmoid(nrms(his_input_title, pred_input_title)).to(device)  # Forward pass
+            outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
             val_loss = loss.item()
 

@@ -13,8 +13,6 @@ class UserEncoder(nn.Module):
         self.dropout = nn.Dropout(hparams_nrms.dropout)
         self.initialize_weights(seed)
         self.batch_norm_attention = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
-        self.batch_norm_news = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
-
         
     def initialize_weights(self, seed):
         """Inicializa explícitamente los pesos de las capas."""
@@ -36,16 +34,12 @@ class UserEncoder(nn.Module):
         
     def forward(self, his_input_title):
         batch_size, history_size, title_size = his_input_title.shape
-        
         # Reshape for titleencoder: treat each news title independently
         his_input_title_flat = his_input_title.view(-1, title_size)  # Shape: (batch_size * history_size, title_size)
-        
         # Input size is (batch_size * history_size, title_size)
         click_title_presents = self.news_encoder(his_input_title_flat)  # Shape: (batch_size * history_size, hidden_dim)
-        click_title_presents = self.batch_norm_news(click_title_presents)
         # Output size is (batch_size * history_size, hidden_dim)
-        # click_title_presents = self.batch_norm_news(click_title_presents)
-        
+
         # Reshape back to include history_size
         click_title_presents = click_title_presents.view(batch_size, history_size, -1)  # Shape: (batch_size, history_size, hidden_dim)
         # Self-attention over the historical clicked news representations
@@ -53,12 +47,12 @@ class UserEncoder(nn.Module):
         # Input size is (batch_size, history_size, hidden_dim)
         y, _ = self.multihead_attention(click_title_presents, click_title_presents, click_title_presents)  # Shape: (batch_size, history_size, hidden_dim)
         # Output size is (batch_size, history_size, hidden_dim)
+        
+        y = self.dropout(y)
+        
         # y = self.batch_norm_attention(y[0])
         y = self.batch_norm_attention(y.permute(0, 2, 1)).permute(0,2,1)
 
-        # Dropout
-        y = self.dropout(y)
-        
         # Attention layer for user representation
         # Input size is (batch_size, history_size, hidden_dim)
         user_present = self.additive_attention(y) 

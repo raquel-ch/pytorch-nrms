@@ -35,21 +35,19 @@ class NewsEncoder(nn.Module):
     def forward(self, sequences_input_title):
         # Input size is (batch_size, title_size)
         embedded_sequences = self.embedding(sequences_input_title).detach()
-        embedded_sequences = embedded_sequences.transpose(1, 2)  # (batch_size, embedding_dim, seq_length)
-        embedded_sequences = self.embedding_bn(embedded_sequences).transpose(1, 2)  # Back to (batch_size, seq_length, embedding_dim)
         # Output size is (batch_size, title_size, embedded_dimension)
         
-        y = self.dropout(embedded_sequences)
-        del embedded_sequences
-        
         # Input size is (title_size, batch_size, embedded_dimension)
-        y,_ = self.multihead_attention(y, y, y)
+        y,_ = self.multihead_attention(embedded_sequences, embedded_sequences, embedded_sequences)
         # Output size is (title_size, batch_size, embedded_dimension)
+        
         y = self.attention_bn(y.permute(0, 2, 1)).permute(0,2, 1)
         y = self.dropout(y)
         
         # Input size is (batch_size, title_size, embedded_dimension)
-        pred_title = self.attention(y)
+        news_representation = self.attention(y)
         # Output size is (batch_size, embedded_dimension)
         
-        return pred_title
+        del embedded_sequences
+        
+        return news_representation
