@@ -11,8 +11,6 @@ class NewsEncoder(nn.Module):
         self.multihead_attention = nn.MultiheadAttention(hparams_nrms.embedded_dimension, hparams_nrms.head_num)
         self.attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
         self.initialize_weights(seed)
-        self.embedding_bn = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
-        self.attention_bn = nn.BatchNorm1d(hparams_nrms.embedded_dimension)
 
     def initialize_weights(self, seed):
         """Inicializa explícitamente los pesos de las capas."""
@@ -32,21 +30,22 @@ class NewsEncoder(nn.Module):
                 # Embeddings: distribución uniforme
                 init.uniform_(module.weight, -0.1, 0.1)
         
-    def forward(self, sequences_input_title):
-        # Input size is (batch_size, title_size)
-        embedded_sequences = self.embedding(sequences_input_title).detach()
-        # Output size is (batch_size, title_size, embedded_dimension)
+    def forward(self, embedded_sequences):
+        # Input size is (batch_size, num of news, title_size, embedded_dimension)
+        embedded_sequences_reshaped = embedded_sequences.view(-1, embedded_sequences.size(2), embedded_sequences.size(3))
+        y,_ = self.multihead_attention(embedded_sequences_reshaped, embedded_sequences_reshaped, embedded_sequences_reshaped)
+        y = y.view(embedded_sequences.size(0), embedded_sequences.size(1), embedded_sequences.size(2), -1)
+        # Output size is (batch_size, num of news, title_size, embedded_dimension)
         
-        # Input size is (title_size, batch_size, embedded_dimension)
-        y,_ = self.multihead_attention(embedded_sequences, embedded_sequences, embedded_sequences)
-        # Output size is (title_size, batch_size, embedded_dimension)
-        
-        # y = self.attention_bn(y.permute(0, 2, 1)).permute(0,2, 1)
         y = self.dropout(y)
         
-        # Input size is (batch_size, title_size, embedded_dimension)
+        # Reshape for attention layer
+        y = y.view(-1, y.size(2), y.size(3))
+        # Output size is (batch_size * num of news, title_size, embedded_dimension)
+        
+        # Input size is (batch_size * num of news, title_size, embedded_dimension)
         news_representation = self.attention(y)
-        # Output size is (batch_size, embedded_dimension)
+        # Output size is (batch_size * num of news, embedded_dimension)
         
         del embedded_sequences
         
