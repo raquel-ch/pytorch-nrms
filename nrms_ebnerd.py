@@ -233,10 +233,13 @@ epoch = 0
 num_epochs = hparams_nrms.epochs
 
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
-print(word2vec_embedding.shape)
 
 nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
+
+for name, param in nrms.named_parameters():
+    print(f"Parameter: {name}, Requires Grad: {param.requires_grad}, Shape: {param.shape}")
+
 
 optimizer = torch.optim.Adam(nrms.parameters(), lr=hparams_nrms.learning_rate, weight_decay=hparams_nrms.weight_decay)
 loss_fn = nn.CrossEntropyLoss()
