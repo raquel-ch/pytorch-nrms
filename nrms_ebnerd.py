@@ -232,7 +232,7 @@ from sklearn.metrics import roc_auc_score
 import torch.nn.utils  # Ensure this is imported for gradient clipping
 
 epoch = 0
-num_epochs = hparams_nrms.epochs
+num_epochs = 2
 
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
 
@@ -249,14 +249,16 @@ val_loss_fn = nn.CrossEntropyLoss()
 
 # Gradient clipping parameter
 max_norm = 5.0  # Maximum gradient norm
-
+running_losses = []
+validation_losses = []
+training_aucs = []
+validation_aucs = []
 # Training loop
 for epoch in range(num_epochs):
     nrms.train()  # Set the model to training mode
     running_loss = 0.0
     all_labels = []
     all_outputs = []
-    running_losses = []
     
     for i, ((his_input_title, pred_input_title), labels) in enumerate(train_dataloader):
         his_input_title = his_input_title.to(device, dtype=torch.long)
@@ -276,7 +278,6 @@ for epoch in range(num_epochs):
 
         optimizer.step()  # Update the parameters
         running_loss += loss.item()
-        running_losses.append(loss.item())
     
         
         # Detach tensors immediately after use to save memory
@@ -291,11 +292,14 @@ for epoch in range(num_epochs):
         del his_input_title, pred_input_title, labels, loss, outputs, og_labels
         torch.cuda.empty_cache()  # Clear unused GPU memory
 
+    running_loss /= len(train_dataloader)
+    running_losses.append(running_loss)
     # Calculate AUC score
     auc = 0
     for i, label_true in enumerate(all_labels):
         auc += roc_auc_score(label_true, all_outputs[i])
     auc /= len(all_labels)
+    training_aucs.append(auc)
     
     # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
@@ -308,7 +312,6 @@ for epoch in range(num_epochs):
     all_labels = []
     all_outputs = []
     val_loss = 0.0
-    validation_losses = []
     with torch.no_grad():
         for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
             his_input_title = his_input_title.to(device, dtype=torch.long)
@@ -318,9 +321,8 @@ for epoch in range(num_epochs):
 
             outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
-            val_loss = loss.item()
-            validation_losses.append(loss.item())
-
+            val_loss += loss.item()
+            
             all_labels.extend(og_labels.cpu().numpy())
             all_outputs.extend(outputs.cpu().numpy())
             
@@ -332,8 +334,12 @@ for epoch in range(num_epochs):
             del his_input_title, pred_input_title, labels, outputs
             torch.cuda.empty_cache()
             
+    val_loss /= len(val_dataloader)
+    validation_losses.append(val_loss)
+
     # Calculate AUC score
     auc = roc_auc_score(all_labels, all_outputs)
+    validation_aucs.append(auc)
     
     # print(f"Validation outputs: {all_outputs[:10]}")
     # print(f"Validation labels: {all_labels[:10]}")
@@ -354,9 +360,10 @@ print("Model saved!")
 # %%
 # Plot the training loss and validation loss
 import matplotlib.pyplot as plt
-
+print(running_losses)
+print(validation_losses)
 plt.title(f"Training Loss vs Validation Loss with BS={hparams_nrms.batch_size}, LR={hparams_nrms.learning_rate}, WD={hparams_nrms.weight_decay}, HD={hparams_nrms.head_dim}, HN={hparams_nrms.head_num}, HS={hparams_nrms.history_size}")
-plt.plot(range(1, num_epochs + 1), running_losses, label="Training Loss")
+plt.plot(list(range(1, num_epochs + 1)), running_losses, label="Training Loss")
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.plot(range(1, num_epochs + 1), validation_losses, label="Validation Loss")
@@ -364,14 +371,21 @@ plt.legend()
 plt.show()
 plt.savefig(f"loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
+print("Loss plot saved :D")
+
 # %%
-# Plot the training AUC and validation AUC
+# Plot the training loss and validation loss
+import matplotlib.pyplot as plt
 plt.title(f"Training AUC vs Validation AUC with BS={hparams_nrms.batch_size}, LR={hparams_nrms.learning_rate}, WD={hparams_nrms.weight_decay}, HD={hparams_nrms.head_dim}, HN={hparams_nrms.head_num}, HS={hparams_nrms.history_size}")
-plt.plot(auc, label="Training AUC")
-plt.plot(auc, label="Validation AUC")
+plt.plot(list(range(1, num_epochs + 1)), training_aucs, label="Training AUC")
+plt.xlabel("Epoch")
+plt.ylabel("AUC")
+plt.plot(range(1, num_epochs + 1), validation_aucs, label="Validation AUC")
 plt.legend()
 plt.show()
 plt.savefig(f"auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+
+print("AUC plot saved :D")
 
 # %%
 # Load the model
