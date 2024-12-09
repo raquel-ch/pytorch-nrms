@@ -232,7 +232,7 @@ from sklearn.metrics import roc_auc_score
 import torch.nn.utils  # Ensure this is imported for gradient clipping
 
 epoch = 0
-num_epochs = 2
+num_epochs = hparams_nrms.epochs
 
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
 
@@ -369,7 +369,7 @@ plt.ylabel("Loss")
 plt.plot(range(1, num_epochs + 1), validation_losses, label="Validation Loss")
 plt.legend()
 plt.show()
-plt.savefig(f"loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+plt.savefig(f"plots/loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
 print("Loss plot saved :D")
 
@@ -383,7 +383,7 @@ plt.ylabel("AUC")
 plt.plot(range(1, num_epochs + 1), validation_aucs, label="Validation AUC")
 plt.legend()
 plt.show()
-plt.savefig(f"auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+plt.savefig(f"plots/auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
 print("AUC plot saved :D")
 
