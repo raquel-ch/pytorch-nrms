@@ -49,4 +49,4 @@ nvidia-smi
 #module load cuda/11.6
 
 #/appl/cuda/11.6.0/samples/bin/x86_64/linux/release/deviceQuery
-python3 hpctest.py "$LR" "$BS" "$EP" "$WD" "$HEAD" > outputtest.txt
+python3 nrms_ebnerd_hpc.py "$LR" "$BS" "$EP" "$WD" "$HEAD" > outputtest.txt
