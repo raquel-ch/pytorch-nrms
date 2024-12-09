@@ -69,7 +69,7 @@ class hparams_npa:
 class hparams_nrms:
     # INPUT DIMENTIONS:
     title_size: int = DEFAULT_TITLE_SIZE
-    history_size: int = 50
+    history_size: int = 10
     # MODEL ARCHITECTURE
     head_num: int = 6
     head_dim: int = 6 # Modified from 20 to DEFAULT_DOCUMENT_SIZE

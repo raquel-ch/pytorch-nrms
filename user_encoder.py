@@ -5,9 +5,8 @@ from model_config import hparams_nrms
 import torch.nn.init as init
 
 class UserEncoder(nn.Module):
-    def __init__(self, news_encoder, hparams_nrms, seed):
+    def __init__(self, hparams_nrms, seed):
         super(UserEncoder, self).__init__()
-        self.news_encoder = news_encoder
         self.multihead_attention = nn.MultiheadAttention(hparams_nrms.embedded_dimension, hparams_nrms.head_num)
         self.additive_attention = AttLayer2(hparams_nrms.attention_hidden_dim, seed)
         self.dropout = nn.Dropout(hparams_nrms.dropout)
@@ -32,15 +31,12 @@ class UserEncoder(nn.Module):
                 # Las inicializaciones ya están en el constructor de AttLayer2
                 pass
         
-    def forward(self, embedded_sequences):
-        batch_size, history_size, title_size, embedding_size = embedded_sequences.shape
+    def forward(self, encoded_news):
+        all_news, embedding_size = encoded_news.shape
+        num_of_users = all_news // hparams_nrms.history_size
         
-        # Input size is (batch_size, num of news, title size, embedding size)
-        click_title_presents = self.news_encoder(embedded_sequences)  # Shape: (batch_size, num of news, title size, embedding size)
-        # Output size is (batch_size * num of news, embedding size)
-        
-        # Reshape from (batch_size * num of news, embedding size) to (batch_size, num of news, embedding size)
-        click_title_presents = click_title_presents.view(batch_size, -1, embedding_size)
+        # Reshape from (all news, embedding size) to (batch_size, num of news, embedding size)
+        click_title_presents = encoded_news.view(num_of_users, hparams_nrms.history_size, embedding_size)
         # Output size is (batch_size, num of news, embedding size)
 
         # Input size is (batch_size, num of news, embedding size)
