@@ -64,18 +64,20 @@ def get_parameters():
     epochs = int(input("Epochs: "))
     weight_decay = float(input("Weight decay: "))
     head_dim = int(input("Head dimension/number: "))
+    history_size = int(input("History size: "))
     
-    return learning_rate, batch_size, epochs, weight_decay, head_dim
+    return learning_rate, batch_size, epochs, weight_decay, head_dim, history_size
 
-learning_rate, batch_size, epochs, weight_decay, head_dim = get_parameters()
+learning_rate, batch_size, epochs, weight_decay, head_dim, history_size = get_parameters()
 hparams_nrms.learning_rate = learning_rate
 hparams_nrms.batch_size = batch_size
 hparams_nrms.epochs = epochs
 hparams_nrms.weight_decay = weight_decay
 hparams_nrms.head_dim = head_dim
 hparams_nrms.head_num = head_dim
+hparams_nrms.history_size = history_size
 
-def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
+def ebnerd_from_path(path: Path, history_size: int = 10) -> pl.DataFrame:
     """
     Load ebnerd - function
     """
@@ -126,7 +128,7 @@ COLUMNS = [
     DEFAULT_CLICKED_ARTICLES_COL,
     DEFAULT_IMPRESSION_ID_COL,
 ]
-HISTORY_SIZE = 10
+HISTORY_SIZE = hparams_nrms.history_size
 FRACTION = 0.01
 
 df_train = (
@@ -254,6 +256,7 @@ for epoch in range(num_epochs):
     running_loss = 0.0
     all_labels = []
     all_outputs = []
+    running_losses = []
     
     for i, ((his_input_title, pred_input_title), labels) in enumerate(train_dataloader):
         his_input_title = his_input_title.to(device, dtype=torch.long)
@@ -273,6 +276,7 @@ for epoch in range(num_epochs):
 
         optimizer.step()  # Update the parameters
         running_loss += loss.item()
+        running_losses.append(loss.item())
     
         
         # Detach tensors immediately after use to save memory
@@ -296,14 +300,15 @@ for epoch in range(num_epochs):
     # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
     print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
-    print(f"Training outputs: {all_outputs[:10]}")
-    print(f"Training labels: {all_labels[:10]}")
+    # print(f"Training outputs: {all_outputs[:10]}")
+    # print(f"Training labels: {all_labels[:10]}")
 
     # Validation loop
     nrms.eval()  # Set the model to evaluation mode
     all_labels = []
     all_outputs = []
     val_loss = 0.0
+    validation_losses = []
     with torch.no_grad():
         for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
             his_input_title = his_input_title.to(device, dtype=torch.long)
@@ -314,6 +319,7 @@ for epoch in range(num_epochs):
             outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
             val_loss = loss.item()
+            validation_losses.append(loss.item())
 
             all_labels.extend(og_labels.cpu().numpy())
             all_outputs.extend(outputs.cpu().numpy())
@@ -329,45 +335,70 @@ for epoch in range(num_epochs):
     # Calculate AUC score
     auc = roc_auc_score(all_labels, all_outputs)
     
-    print(f"Validation outputs: {all_outputs[:10]}")
-    print(f"Validation labels: {all_labels[:10]}")
+    # print(f"Validation outputs: {all_outputs[:10]}")
+    # print(f"Validation labels: {all_labels[:10]}")
     
     # Print validation details
     print(f"Validation loss: {val_loss:.10f}, Validation AUC: {auc:.10f}")
     print(f"--------------------------\n")
         
+
+# Save the model
+torch.save(nrms.state_dict(), "nrms_model.pth")
+print("Model saved!")
+
         
 
 
 
 # %%
-# MODEL_NAME = "NRMS"
-# LOG_DIR = f"downloads/runs/{MODEL_NAME}"
-# MODEL_WEIGHTS = f"downloads/data/state_dict/{MODEL_NAME}/weights"
+# Plot the training loss and validation loss
+import matplotlib.pyplot as plt
 
-# # CALLBACKS
-# # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=LOG_DIR, histogram_freq=1)
-# # early_stopping = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=2)
-# # modelcheckpoint = tf.keras.callbacks.ModelCheckpoint(
-# #     filepath=MODEL_WEIGHTS, save_best_only=True, save_weights_only=True, verbose=1
-# # )
+plt.title(f"Training Loss vs Validation Loss with BS={hparams_nrms.batch_size}, LR={hparams_nrms.learning_rate}, WD={hparams_nrms.weight_decay}, HD={hparams_nrms.head_dim}, HN={hparams_nrms.head_num}, HS={hparams_nrms.history_size}")
+plt.plot(range(1, num_epochs + 1), running_losses, label="Training Loss")
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.plot(range(1, num_epochs + 1), validation_losses, label="Validation Loss")
+plt.legend()
+plt.show()
+plt.savefig(f"loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
-# hparams_nrms.history_size = HISTORY_SIZE
+# %%
+# Plot the training AUC and validation AUC
+plt.title(f"Training AUC vs Validation AUC with BS={hparams_nrms.batch_size}, LR={hparams_nrms.learning_rate}, WD={hparams_nrms.weight_decay}, HD={hparams_nrms.head_dim}, HN={hparams_nrms.head_num}, HS={hparams_nrms.history_size}")
+plt.plot(auc, label="Training AUC")
+plt.plot(auc, label="Validation AUC")
+plt.legend()
+plt.show()
+plt.savefig(f"auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
+# %%
+# Load the model
+nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)
+nrms.load_state_dict(torch.load("nrms_model.pth"))
+nrms.eval()
 
-# model = NRMSModel(
-#     hparams=hparams_nrms,
-#     word2vec_embedding=word2vec_embedding,
-#     seed=42,
-# )
-# hist = model.model.fit(
-#     train_dataloader,
-#     validation_data=val_dataloader,
-#     epochs=1,
-#     # callbacks=[tensorboard_callback, early_stopping, modelcheckpoint],
-# )
-# Uncomment the following line if you have pre-trained weights
-# _ = model.model.load_weights(filepath=MODEL_WEIGHTS)
+# Generate predictions
+predictions = []
+nrms.eval()
+with torch.no_grad():
+    for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
+        his_input_title = his_input_title.to(device, dtype=torch.long)
+        pred_input_title = pred_input_title.to(device, dtype=torch.long)
+        outputs = nrms(his_input_title, pred_input_title).to(device)
+        predictions.extend(outputs.cpu().numpy())
+        his_input_title = his_input_title.detach()
+        pred_input_title = pred_input_title.detach()
+        outputs = outputs.detach()
+        del his_input_title, pred_input_title, outputs
+        torch.cuda.empty_cache()
+        
+# Rank the predictions
+df_validation = df_validation.with_column("predictions", pl.Series(predictions))
+df_validation = rank_predictions_by_score(df_validation, "predictions", groupby=DEFAULT_IMPRESSION_ID_COL)
+df_validation.head(5)
+
 
 # %% [markdown]
 # # Example how to compute some metrics:
