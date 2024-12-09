@@ -66,8 +66,9 @@ def get_parameters():
     epochs = int(input("Epochs: "))
     weight_decay = float(input("Weight decay: "))
     head_dim = int(input("Head dimension/number: "))
+    history_size = int(input("History size: "))
     
-    return learning_rate, batch_size, epochs, weight_decay, head_dim
+    return learning_rate, batch_size, epochs, weight_decay, head_dim, history_size
 
 # Argument parsing
 parser = argparse.ArgumentParser()
@@ -76,6 +77,7 @@ parser.add_argument("bs", type=int)
 parser.add_argument("ep", type=int)
 parser.add_argument("wd", type=float)
 parser.add_argument("head", type=int)
+parser.add_argument("hs", type=int)
 
 args = parser.parse_args()
 
@@ -85,16 +87,18 @@ batch_size = args.bs
 epochs = args.ep
 weight_decay = args.wd
 head_dim = args.head
+history_size = args.hs
 
-#learning_rate, batch_size, epochs, weight_decay, head_dim = get_parameters()
+#learning_rate, batch_size, epochs, weight_decay, head_dim, history_size = get_parameters()
 hparams_nrms.learning_rate = learning_rate
 hparams_nrms.batch_size = batch_size
 hparams_nrms.epochs = epochs
 hparams_nrms.weight_decay = weight_decay
 hparams_nrms.head_dim = head_dim
 hparams_nrms.head_num = head_dim
+hparams_nrms.history_size = history_size
 
-def ebnerd_from_path(path: Path, history_size: int = 30) -> pl.DataFrame:
+def ebnerd_from_path(path: Path, history_size: int = 10) -> pl.DataFrame:
     """
     Load ebnerd - function
     """
@@ -145,7 +149,7 @@ COLUMNS = [
     DEFAULT_CLICKED_ARTICLES_COL,
     DEFAULT_IMPRESSION_ID_COL,
 ]
-HISTORY_SIZE = 10
+HISTORY_SIZE = hparams_nrms.history_size
 FRACTION = 0.01
 
 df_train = (
@@ -252,10 +256,12 @@ epoch = 0
 num_epochs = hparams_nrms.epochs
 
 word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
-print(word2vec_embedding.shape)
 
 nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
+
+for name, param in nrms.named_parameters():
+    print(f"Parameter: {name}, Requires Grad: {param.requires_grad}, Shape: {param.shape}")
 
 optimizer = torch.optim.Adam(nrms.parameters(), lr=hparams_nrms.learning_rate, weight_decay=hparams_nrms.weight_decay)
 loss_fn = nn.CrossEntropyLoss()
@@ -263,6 +269,10 @@ val_loss_fn = nn.CrossEntropyLoss()
 
 # Gradient clipping parameter
 max_norm = 5.0  # Maximum gradient norm
+running_losses = []
+validation_losses = []
+training_aucs = []
+validation_aucs = []
 
 # Training loop
 for epoch in range(num_epochs):
@@ -303,17 +313,20 @@ for epoch in range(num_epochs):
         del his_input_title, pred_input_title, labels, loss, outputs, og_labels
         torch.cuda.empty_cache()  # Clear unused GPU memory
 
+    running_loss /= len(train_dataloader)
+    running_losses.append(running_loss)
     # Calculate AUC score
     auc = 0
     for i, label_true in enumerate(all_labels):
         auc += roc_auc_score(label_true, all_outputs[i])
     auc /= len(all_labels)
+    training_aucs.append(auc)
     
     # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
     print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
-    print(f"Training outputs: {all_outputs[:10]}")
-    print(f"Training labels: {all_labels[:10]}")
+    #print(f"Training outputs: {all_outputs[:10]}")
+    #print(f"Training labels: {all_labels[:10]}")
 
     # Write training AUC values to file
     with open('outputtest.txt', 'a') as f:
@@ -333,7 +346,7 @@ for epoch in range(num_epochs):
 
             outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
-            val_loss = loss.item()
+            val_loss += loss.item()
 
             all_labels.extend(og_labels.cpu().numpy())
             all_outputs.extend(outputs.cpu().numpy())
@@ -346,11 +359,15 @@ for epoch in range(num_epochs):
             del his_input_title, pred_input_title, labels, outputs
             torch.cuda.empty_cache()
             
+    val_loss /= len(val_dataloader)
+    validation_losses.append(val_loss)
+
     # Calculate AUC score
     auc = roc_auc_score(all_labels, all_outputs)
+    validation_aucs.append(auc)
     
-    print(f"Validation outputs: {all_outputs[:10]}")
-    print(f"Validation labels: {all_labels[:10]}")
+    #print(f"Validation outputs: {all_outputs[:10]}")
+    #print(f"Validation labels: {all_labels[:10]}")
     
     # Print validation details
     print(f"Validation loss: {val_loss:.10f}, Validation AUC: {auc:.10f}")
