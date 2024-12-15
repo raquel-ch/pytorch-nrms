@@ -150,7 +150,7 @@ COLUMNS = [
     DEFAULT_IMPRESSION_ID_COL,
 ]
 HISTORY_SIZE = hparams_nrms.history_size
-FRACTION = 0.01
+FRACTION = 0.2
 
 df_train = (
     ebnerd_from_path(PATH.joinpath(DATASPLIT, "train"), history_size=HISTORY_SIZE)
@@ -209,45 +209,47 @@ article_mapping = create_article_id_to_value_mapping(
     df=df_articles, value_col=token_col_title
 )
 
-# %% [markdown]
-# ### GLOVE EMBEDDINGS
-
-# %% [markdown]
-# #### Load embeddings
-
 # %%
-# vocab,embeddings = [],[]
-# with open('glove.6B.300d.txt','rt') as fi:
-#     full_content = fi.read().strip().split('\n')
-# for i in range(len(full_content)):
-#     i_word = full_content[i].split(' ')[0]
-#     i_embeddings = [float(val) for val in full_content[i].split(' ')[1:]]
-#     vocab.append(i_word)
-#     embeddings.append(i_embeddings)
+# try to check if files exist
+import os
+if not os.path.exists('vocab_npa.npy') or not os.path.exists('embs_npa.npy'):
+    vocab,embeddings = [],[]
+    with open('glove.6B.300d.txt','rt') as fi:
+        full_content = fi.read().strip().split('\n')
+    for i in range(len(full_content)):
+        i_word = full_content[i].split(' ')[0]
+        i_embeddings = [float(val) for val in full_content[i].split(' ')[1:]]
+        vocab.append(i_word)
+        embeddings.append(i_embeddings)
+        
+    import numpy as np
+    vocab_npa = np.array(vocab)
+    embs_npa = np.array(embeddings)
+
+    #insert '<pad>' and '<unk>' tokens at start of vocab_npa.
+    vocab_npa = np.insert(vocab_npa, 0, '<pad>')
+    vocab_npa = np.insert(vocab_npa, 1, '<unk>')
+    print(vocab_npa[:10])
+
+    pad_emb_npa = np.zeros((1,embs_npa.shape[1]))   #embedding for '<pad>' token.
+    unk_emb_npa = np.mean(embs_npa,axis=0,keepdims=True)    #embedding for '<unk>' token.
+
+    #insert embeddings for pad and unk tokens at top of embs_npa.
+    embs_npa = np.vstack((pad_emb_npa,unk_emb_npa,embs_npa))
+
+    with open('vocab_npa.npy','wb') as f:
+        np.save(f,vocab_npa)
+
+    with open('embs_npa.npy','wb') as f:
+        np.save(f,embs_npa)
+
+else:
+    embs_npa = np.load('embs_npa.npy')
+    vocab_npa = np.load('vocab_npa.npy')
+
+embs_npa = torch.tensor(embs_npa).float()
+print(embs_npa.shape)
     
-# import numpy as np
-# vocab_npa = np.array(vocab)
-# embs_npa = np.array(embeddings)
-
-# #insert '<pad>' and '<unk>' tokens at start of vocab_npa.
-# vocab_npa = np.insert(vocab_npa, 0, '<pad>')
-# vocab_npa = np.insert(vocab_npa, 1, '<unk>')
-# print(vocab_npa[:10])
-
-# pad_emb_npa = np.zeros((1,embs_npa.shape[1]))   #embedding for '<pad>' token.
-# unk_emb_npa = np.mean(embs_npa,axis=0,keepdims=True)    #embedding for '<unk>' token.
-
-# #insert embeddings for pad and unk tokens at top of embs_npa.
-# embs_npa = np.vstack((pad_emb_npa,unk_emb_npa,embs_npa))
-
-# with open('vocab_npa.npy','wb') as f:
-#     np.save(f,vocab_npa)
-
-# with open('embs_npa.npy','wb') as f:
-#     np.save(f,embs_npa)
-
-# embs_npa = torch.tensor(embs_npa).float()
-# print(embs_npa.shape)
 
 # %% [markdown]
 # # Initiate the dataloaders
@@ -291,13 +293,11 @@ print_hparams(hparams_nrms)
 # %%
 from sklearn.metrics import roc_auc_score
 import torch.nn.utils  # Ensure this is imported for gradient clipping
-from model_config import hparams_nrms
-from NRMSModel import NRMSModel
 
 epoch = 0
 num_epochs = hparams_nrms.epochs
 
-word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
+word2vec_embedding = embs_npa.to(device)
 
 nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
@@ -367,8 +367,9 @@ for epoch in range(num_epochs):
     # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
     print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
-    # print(f"Training outputs: {all_outputs[:10]}")
-    # print(f"Training labels: {all_labels[:10]}")
+    #print(f"Training outputs: {all_outputs[:10]}")
+    #print(f"Training labels: {all_labels[:10]}")
+
     # Write training AUC values to file
     with open('outputtest.txt', 'a') as f:
         f.write(f"(Tr) Epoch: {epoch}, AUC: {auc}\n")
@@ -388,7 +389,7 @@ for epoch in range(num_epochs):
             outputs = nrms(his_input_title, pred_input_title).to(device)  # Forward pass
             loss = val_loss_fn(outputs.view(-1), labels.float())
             val_loss += loss.item()
-
+            
             all_labels.extend(og_labels.cpu().numpy())
             all_outputs.extend(outputs.cpu().numpy())
             
@@ -423,33 +424,45 @@ for epoch in range(num_epochs):
 
 
 # %%
-# MODEL_NAME = "NRMS"
-# LOG_DIR = f"downloads/runs/{MODEL_NAME}"
-# MODEL_WEIGHTS = f"downloads/data/state_dict/{MODEL_NAME}/weights"
+# Plot the training loss and validation loss
+import matplotlib.pyplot as plt
+print(running_losses)
+print(validation_losses)
+plt.title("Configuration 1 - Loss")
+plt.plot(list(range(1, num_epochs + 1)), running_losses, label="Training Loss")
+# steps for x-axis
+plt.xticks(list(range(1, num_epochs + 1, 2)))
+# steps for y-axis should be of 0.2 from 0 to 1
+# plt.yticks([i/2 for i in range(0, 3)])
+plt.xlabel("Epoch")
+plt.ylabel("Loss")
+plt.plot(range(1, num_epochs + 1), validation_losses, label="Validation Loss")
+plt.legend()
+plt.show()
+plt.savefig(f"plots/loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
-# # CALLBACKS
-# # tensorboard_callback = tf.keras.callbacks.TensorBoard(log_dir=LOG_DIR, histogram_freq=1)
-# # early_stopping = tf.keras.callbacks.EarlyStopping(monitor="val_loss", patience=2)
-# # modelcheckpoint = tf.keras.callbacks.ModelCheckpoint(
-# #     filepath=MODEL_WEIGHTS, save_best_only=True, save_weights_only=True, verbose=1
-# # )
+print("Loss plot saved :D")
 
-# hparams_nrms.history_size = HISTORY_SIZE
+# %%
+# Plot the training loss and validation loss
+import matplotlib.pyplot as plt
+# Reset the plot
+plt.plot()
+plt.title("Configuration 1 - AUC")
+plt.plot(list(range(1, num_epochs + 1)), training_aucs, label="Training AUC")
+# steps for x-axis
+plt.xticks(list(range(1, num_epochs + 1, 2)))
+# steps for y-axis should be of 0.05 from 0 to 1
+# plt.yticks([i/20 for i in range(0, 21)])
 
+plt.xlabel("Epoch")
+plt.ylabel("AUC")
+plt.plot(range(1, num_epochs + 1), validation_aucs, label="Validation AUC")
+plt.legend()
+plt.show()
+plt.savefig(f"plots/auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
-# model = NRMSModel(
-#     hparams=hparams_nrms,
-#     word2vec_embedding=word2vec_embedding,
-#     seed=42,
-# )
-# hist = model.model.fit(
-#     train_dataloader,
-#     validation_data=val_dataloader,
-#     epochs=1,
-#     # callbacks=[tensorboard_callback, early_stopping, modelcheckpoint],
-# )
-# Uncomment the following line if you have pre-trained weights
-# _ = model.model.load_weights(filepath=MODEL_WEIGHTS)
+print("AUC plot saved :D")
 
 # %% [markdown]
 # # Example how to compute some metrics:
