@@ -212,6 +212,7 @@ article_mapping = create_article_id_to_value_mapping(
 # %%
 # try to check if files exist
 import os
+import numpy as np
 if not os.path.exists('vocab_npa.npy') or not os.path.exists('embs_npa.npy'):
     vocab,embeddings = [],[]
     with open('glove.6B.300d.txt','rt') as fi:
@@ -222,7 +223,6 @@ if not os.path.exists('vocab_npa.npy') or not os.path.exists('embs_npa.npy'):
         vocab.append(i_word)
         embeddings.append(i_embeddings)
         
-    import numpy as np
     vocab_npa = np.array(vocab)
     embs_npa = np.array(embeddings)
 
