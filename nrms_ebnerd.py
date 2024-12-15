@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import argparse
 # %% [markdown]
 # # Getting started
 # 
@@ -68,7 +70,26 @@ def get_parameters():
     
     return learning_rate, batch_size, epochs, weight_decay, head_dim, history_size
 
-learning_rate, batch_size, epochs, weight_decay, head_dim, history_size = get_parameters()
+# Argument parsing
+parser = argparse.ArgumentParser()
+parser.add_argument("lr", type=float)
+parser.add_argument("bs", type=int)
+parser.add_argument("ep", type=int)
+parser.add_argument("wd", type=float)
+parser.add_argument("head", type=int)
+parser.add_argument("hs", type=int)
+
+args = parser.parse_args()
+
+# Add parsed values
+learning_rate = args.lr
+batch_size = args.bs
+epochs = args.ep
+weight_decay = args.wd
+head_dim = args.head
+history_size = args.hs
+
+#learning_rate, batch_size, epochs, weight_decay, head_dim, history_size = get_parameters()
 hparams_nrms.learning_rate = learning_rate
 hparams_nrms.batch_size = batch_size
 hparams_nrms.epochs = epochs
@@ -129,7 +150,7 @@ COLUMNS = [
     DEFAULT_IMPRESSION_ID_COL,
 ]
 HISTORY_SIZE = hparams_nrms.history_size
-FRACTION = 0.01
+FRACTION = 0.15
 
 df_train = (
     ebnerd_from_path(PATH.joinpath(DATASPLIT, "train"), history_size=HISTORY_SIZE)
@@ -306,6 +327,11 @@ for epoch in range(num_epochs):
     print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
     # print(f"Training outputs: {all_outputs[:10]}")
     # print(f"Training labels: {all_labels[:10]}")
+    
+        # Write training AUC values to file
+    with open('outputtest.txt', 'a') as f:
+        f.write(f"(Tr) Epoch: {epoch}, AUC: {auc}\n")
+
 
     # Validation loop
     nrms.eval()  # Set the model to evaluation mode
@@ -349,10 +375,10 @@ for epoch in range(num_epochs):
     print(f"--------------------------\n")
         
 
-# Save the model
-torch.save(nrms.state_dict(), "nrms_model.pth")
-print("Model saved!")
-
+    # Write validation AUC values to file
+    with open('outputtest.txt', 'a') as f:
+        f.write(f"(Val) Epoch: {epoch}, AUC: {auc}\n")
+        
         
 
 
@@ -369,7 +395,7 @@ plt.ylabel("Loss")
 plt.plot(range(1, num_epochs + 1), validation_losses, label="Validation Loss")
 plt.legend()
 plt.show()
-plt.savefig(f"plots/loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+plt.savefig(f"loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
 print("Loss plot saved :D")
 
@@ -383,35 +409,35 @@ plt.ylabel("AUC")
 plt.plot(range(1, num_epochs + 1), validation_aucs, label="Validation AUC")
 plt.legend()
 plt.show()
-plt.savefig(f"plots/auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+plt.savefig(f"auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
 print("AUC plot saved :D")
 
-# %%
-# Load the model
-nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)
-nrms.load_state_dict(torch.load("nrms_model.pth"))
-nrms.eval()
+# # %%
+# # Load the model
+# nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)
+# nrms.load_state_dict(torch.load("nrms_model.pth"))
+# nrms.eval()
 
-# Generate predictions
-predictions = []
-nrms.eval()
-with torch.no_grad():
-    for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
-        his_input_title = his_input_title.to(device, dtype=torch.long)
-        pred_input_title = pred_input_title.to(device, dtype=torch.long)
-        outputs = nrms(his_input_title, pred_input_title).to(device)
-        predictions.extend(outputs.cpu().numpy())
-        his_input_title = his_input_title.detach()
-        pred_input_title = pred_input_title.detach()
-        outputs = outputs.detach()
-        del his_input_title, pred_input_title, outputs
-        torch.cuda.empty_cache()
+# # Generate predictions
+# predictions = []
+# nrms.eval()
+# with torch.no_grad():
+#     for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
+#         his_input_title = his_input_title.to(device, dtype=torch.long)
+#         pred_input_title = pred_input_title.to(device, dtype=torch.long)
+#         outputs = nrms(his_input_title, pred_input_title).to(device)
+#         predictions.extend(outputs.cpu().numpy())
+#         his_input_title = his_input_title.detach()
+#         pred_input_title = pred_input_title.detach()
+#         outputs = outputs.detach()
+#         del his_input_title, pred_input_title, outputs
+#         torch.cuda.empty_cache()
         
-# Rank the predictions
-df_validation = df_validation.with_column("predictions", pl.Series(predictions))
-df_validation = rank_predictions_by_score(df_validation, "predictions", groupby=DEFAULT_IMPRESSION_ID_COL)
-df_validation.head(5)
+# # Rank the predictions
+# df_validation = df_validation.with_column("predictions", pl.Series(predictions))
+# df_validation = rank_predictions_by_score(df_validation, "predictions", groupby=DEFAULT_IMPRESSION_ID_COL)
+# df_validation.head(5)
 
 
 # %% [markdown]
