@@ -73,8 +73,8 @@ class hparams_nrms:
     # MODEL ARCHITECTURE
     head_num: int = 6
     head_dim: int = 6 # Modified from 20 to DEFAULT_DOCUMENT_SIZE
-    attention_hidden_dim: int = 384
-    embedded_dimension: int = 384
+    attention_hidden_dim: int = 300
+    embedded_dimension: int = 300
     # MODEL OPTIMIZER:
     optimizer: str = "adam"
     loss: str = "cross_entropy_loss"

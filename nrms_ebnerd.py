@@ -1,3 +1,5 @@
+#!/usr/bin/env python3
+import argparse
 # %% [markdown]
 # # Getting started
 # 
@@ -68,7 +70,26 @@ def get_parameters():
     
     return learning_rate, batch_size, epochs, weight_decay, head_dim, history_size
 
-learning_rate, batch_size, epochs, weight_decay, head_dim, history_size = get_parameters()
+# Argument parsing
+parser = argparse.ArgumentParser()
+parser.add_argument("lr", type=float)
+parser.add_argument("bs", type=int)
+parser.add_argument("ep", type=int)
+parser.add_argument("wd", type=float)
+parser.add_argument("head", type=int)
+parser.add_argument("hs", type=int)
+
+args = parser.parse_args()
+
+# Add parsed values
+learning_rate = args.lr
+batch_size = args.bs
+epochs = args.ep
+weight_decay = args.wd
+head_dim = args.head
+history_size = args.hs
+
+#learning_rate, batch_size, epochs, weight_decay, head_dim, history_size = get_parameters()
 hparams_nrms.learning_rate = learning_rate
 hparams_nrms.batch_size = batch_size
 hparams_nrms.epochs = epochs
@@ -129,7 +150,7 @@ COLUMNS = [
     DEFAULT_IMPRESSION_ID_COL,
 ]
 HISTORY_SIZE = hparams_nrms.history_size
-FRACTION = 0.01
+FRACTION = 0.2
 
 df_train = (
     ebnerd_from_path(PATH.joinpath(DATASPLIT, "train"), history_size=HISTORY_SIZE)
@@ -188,6 +209,48 @@ article_mapping = create_article_id_to_value_mapping(
     df=df_articles, value_col=token_col_title
 )
 
+# %%
+# try to check if files exist
+import os
+import numpy as np
+if not os.path.exists('vocab_npa.npy') or not os.path.exists('embs_npa.npy'):
+    vocab,embeddings = [],[]
+    with open('glove.6B.300d.txt','rt') as fi:
+        full_content = fi.read().strip().split('\n')
+    for i in range(len(full_content)):
+        i_word = full_content[i].split(' ')[0]
+        i_embeddings = [float(val) for val in full_content[i].split(' ')[1:]]
+        vocab.append(i_word)
+        embeddings.append(i_embeddings)
+        
+    vocab_npa = np.array(vocab)
+    embs_npa = np.array(embeddings)
+
+    #insert '<pad>' and '<unk>' tokens at start of vocab_npa.
+    vocab_npa = np.insert(vocab_npa, 0, '<pad>')
+    vocab_npa = np.insert(vocab_npa, 1, '<unk>')
+    print(vocab_npa[:10])
+
+    pad_emb_npa = np.zeros((1,embs_npa.shape[1]))   #embedding for '<pad>' token.
+    unk_emb_npa = np.mean(embs_npa,axis=0,keepdims=True)    #embedding for '<unk>' token.
+
+    #insert embeddings for pad and unk tokens at top of embs_npa.
+    embs_npa = np.vstack((pad_emb_npa,unk_emb_npa,embs_npa))
+
+    with open('vocab_npa.npy','wb') as f:
+        np.save(f,vocab_npa)
+
+    with open('embs_npa.npy','wb') as f:
+        np.save(f,embs_npa)
+
+else:
+    embs_npa = np.load('embs_npa.npy')
+    vocab_npa = np.load('vocab_npa.npy')
+
+embs_npa = torch.tensor(embs_npa).float()
+print(embs_npa.shape)
+    
+
 # %% [markdown]
 # # Initiate the dataloaders
 # In the implementations we have disconnected the models and data. Hence, you should built a dataloader that fits your needs.
@@ -234,7 +297,7 @@ import torch.nn.utils  # Ensure this is imported for gradient clipping
 epoch = 0
 num_epochs = hparams_nrms.epochs
 
-word2vec_embedding = torch.tensor(word2vec_embedding, dtype=torch.float32).to(device)
+word2vec_embedding = embs_npa.to(device)
 
 nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)  # Adding to device
 print(nrms)
@@ -304,8 +367,12 @@ for epoch in range(num_epochs):
     # Print training details
     print(f"Epoch: {epoch + 1}/{num_epochs}")
     print(f"Training loss: {running_loss:.10f}, Training AUC: {auc:.10f}")
-    # print(f"Training outputs: {all_outputs[:10]}")
-    # print(f"Training labels: {all_labels[:10]}")
+    #print(f"Training outputs: {all_outputs[:10]}")
+    #print(f"Training labels: {all_labels[:10]}")
+
+    # Write training AUC values to file
+    with open('outputtest.txt', 'a') as f:
+        f.write(f"(Tr) Epoch: {epoch}, AUC: {auc}\n")
 
     # Validation loop
     nrms.eval()  # Set the model to evaluation mode
@@ -347,12 +414,11 @@ for epoch in range(num_epochs):
     # Print validation details
     print(f"Validation loss: {val_loss:.10f}, Validation AUC: {auc:.10f}")
     print(f"--------------------------\n")
+
+    # Write validation AUC values to file
+    with open('outputtest.txt', 'a') as f:
+        f.write(f"(Val) Epoch: {epoch}, AUC: {auc}\n")
         
-
-# Save the model
-torch.save(nrms.state_dict(), "nrms_model.pth")
-print("Model saved!")
-
         
 
 
@@ -362,57 +428,41 @@ print("Model saved!")
 import matplotlib.pyplot as plt
 print(running_losses)
 print(validation_losses)
-plt.title(f"Training Loss vs Validation Loss with BS={hparams_nrms.batch_size}, LR={hparams_nrms.learning_rate}, WD={hparams_nrms.weight_decay}, HD={hparams_nrms.head_dim}, HN={hparams_nrms.head_num}, HS={hparams_nrms.history_size}")
+plt.title("Configuration 1 - Loss")
 plt.plot(list(range(1, num_epochs + 1)), running_losses, label="Training Loss")
+# steps for x-axis
+plt.xticks(list(range(1, num_epochs + 1, 2)))
+# steps for y-axis should be of 0.2 from 0 to 1
+# plt.yticks([i/2 for i in range(0, 3)])
 plt.xlabel("Epoch")
 plt.ylabel("Loss")
 plt.plot(range(1, num_epochs + 1), validation_losses, label="Validation Loss")
 plt.legend()
 plt.show()
-plt.savefig(f"plots/loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+plt.savefig(f"loss_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
 print("Loss plot saved :D")
 
 # %%
 # Plot the training loss and validation loss
 import matplotlib.pyplot as plt
-plt.title(f"Training AUC vs Validation AUC with BS={hparams_nrms.batch_size}, LR={hparams_nrms.learning_rate}, WD={hparams_nrms.weight_decay}, HD={hparams_nrms.head_dim}, HN={hparams_nrms.head_num}, HS={hparams_nrms.history_size}")
+# Reset the plot
+plt.plot()
+plt.title("Configuration 1 - AUC")
 plt.plot(list(range(1, num_epochs + 1)), training_aucs, label="Training AUC")
+# steps for x-axis
+plt.xticks(list(range(1, num_epochs + 1, 2)))
+# steps for y-axis should be of 0.05 from 0 to 1
+# plt.yticks([i/20 for i in range(0, 21)])
+
 plt.xlabel("Epoch")
 plt.ylabel("AUC")
 plt.plot(range(1, num_epochs + 1), validation_aucs, label="Validation AUC")
 plt.legend()
 plt.show()
-plt.savefig(f"plots/auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
+plt.savefig(f"auc_bs{hparams_nrms.batch_size}_lr{hparams_nrms.learning_rate}_wd{hparams_nrms.weight_decay}_hd{hparams_nrms.head_dim}_hn{hparams_nrms.head_num}_hs{hparams_nrms.history_size}.png")
 
 print("AUC plot saved :D")
-
-# %%
-# Load the model
-nrms = NRMSModel(hparams_nrms=hparams_nrms, word2vec_embedding=word2vec_embedding, seed=50).to(device)
-nrms.load_state_dict(torch.load("nrms_model.pth"))
-nrms.eval()
-
-# Generate predictions
-predictions = []
-nrms.eval()
-with torch.no_grad():
-    for i, ((his_input_title, pred_input_title), labels) in enumerate(val_dataloader):
-        his_input_title = his_input_title.to(device, dtype=torch.long)
-        pred_input_title = pred_input_title.to(device, dtype=torch.long)
-        outputs = nrms(his_input_title, pred_input_title).to(device)
-        predictions.extend(outputs.cpu().numpy())
-        his_input_title = his_input_title.detach()
-        pred_input_title = pred_input_title.detach()
-        outputs = outputs.detach()
-        del his_input_title, pred_input_title, outputs
-        torch.cuda.empty_cache()
-        
-# Rank the predictions
-df_validation = df_validation.with_column("predictions", pl.Series(predictions))
-df_validation = rank_predictions_by_score(df_validation, "predictions", groupby=DEFAULT_IMPRESSION_ID_COL)
-df_validation.head(5)
-
 
 # %% [markdown]
 # # Example how to compute some metrics:

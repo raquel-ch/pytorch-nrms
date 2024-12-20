@@ -11,11 +11,11 @@
 ### -- set walltime limit: hh:mm --  maximum 24 hours for GPU-queues right now
 #BSUB -W 3:00
 # request 5GB of system-memory
-#BSUB -R "rusage[mem=16GB]"
+#BSUB -R "rusage[mem=32GB]"
 ### -- set the email address --
 # please uncomment the following line and put in your e-mail address,
 # if you want to receive e-mail notifications on a non-default address
-#BSUB -u s233668@dtu.dk
+#BSUB -u s232888@dtu.dk
 ### -- send notification at start --
 #BSUB -B
 ### -- send notification at completion--
@@ -31,10 +31,10 @@
 
 # Set variables (ensure they are set dynamically when submitting the job)
 LR=${LR:-0.0001}  # Default to 0.0001 if learning rate is not set
-BS=${BS:-8}  # Default to 8 if batch size is not set
-EP=${EP:-30}  # Default to 30 if epochs is not set
+BS=${BS:-16}  # Default to 8 if batch size is not set
+EP=${EP:-50}  # Default to 30 if epochs is not set
 WD=${WD:-0}  # Default to 0 if weight decay is not set
-HEAD=${HEAD:-6}  # Default to 6 if head dim is not set
+HEAD=${HEAD:-12}  # Default to 6 if head dim is not set
 HS=${HS:-10}  # Default to 10 if history size is not set
 export LR
 export BS
@@ -51,4 +51,4 @@ nvidia-smi
 #module load cuda/11.6
 
 #/appl/cuda/11.6.0/samples/bin/x86_64/linux/release/deviceQuery
-python3 nrms_ebnerd_hpc.py "$LR" "$BS" "$EP" "$WD" "$HEAD" "$HS" > "output_LR${LR}_BS${BS}_EP${EP}_WD${WD}_HEAD${HEAD}_HS${HS}.txt"
+python3 nrms_ebnerd.py "$LR" "$BS" "$EP" "$WD" "$HEAD" "$HS" > "output_LR${LR}_BS${BS}_EP${EP}_WD${WD}_HEAD${HEAD}_HS${HS}.txt"
